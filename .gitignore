@@ -1,0 +1,18 @@
+# Verilator and simulation build outputs
+sim_rv32im_ahb_core/
+**/obj_dir/
+
+# Waveform dumps and generated traces
+*.vcd
+waves/
+
+# Native build artifacts
+*.o
+*.d
+*.a
+*.so
+*.gch
+
+# Common editor/OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+// ---- CSR File ----//
+verilator --binary --timing -Wall \
+  -Wno-TIMESCALEMOD -Wno-WIDTHEXPAND \
+  --top-module tb_CSR_File \
+  CSR_Data_Mux_Unit.v Data_Wr_Mux_Unit.v MISA_PreData_Unit.v \
+  MStatus_Reg.v MIE_Reg.v MIP_Reg.v MTVec_Reg.v \
+  MEPC_MScratch_Reg.v MCause_Reg.v MTVal_Reg.v \
+  Machine_Counter_Setup.v Machine_Counter.v \
+  CSR_File.v tb_CSR_File.v \
+  -o sim_csrfile && ./obj_dir/sim_csrfile
+
+// ---- Machine Control ----//
+verilator --binary --timing -Wall \
+  -Wno-TIMESCALEMOD -Wno-WIDTHEXPAND \
+  --top-module tb_Machine_Control \
+  Machine_Control.v \
+  tb_Machine_Control.v \
+  -o sim_mc && ./obj_dir/sim_mc
