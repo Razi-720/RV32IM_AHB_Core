@@ -1,0 +1,165 @@
+###############################################################################
+# Yosys Synthesis Script for RV32IM_AHB Core - ASAP7
+###############################################################################
+
+echo on
+
+# ============================================================================
+# Read ASAP7 Liberty Files
+# ============================================================================
+
+read_liberty -lib \
+    syn_sta_rv32im_ahb_core/lib/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib
+
+read_liberty -lib \
+    syn_sta_rv32im_ahb_core/lib/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib
+
+# ============================================================================
+# Read RTL
+# ============================================================================
+
+read_verilog -sv -Iinclude \
+    rtl_rv32im_ahb_core/top/Pip_RV32IM_AHB.v \
+    rtl_rv32im_ahb_core/pipeline_registers/Reg_F_D.v \
+    rtl_rv32im_ahb_core/pipeline_registers/Reg_D_E.v \
+    rtl_rv32im_ahb_core/pipeline_registers/Reg_E_M.v \
+    rtl_rv32im_ahb_core/pipeline_registers/Reg_M_W.v \
+    rtl_rv32im_ahb_core/control/Decoder.v \
+    rtl_rv32im_ahb_core/control/Instr_Decoder.v \
+    rtl_rv32im_ahb_core/control/Machine_Control.v \
+    rtl_rv32im_ahb_core/control/WrEn_Generator.v \
+    rtl_rv32im_ahb_core/datapath_units/ALU.v \
+    rtl_rv32im_ahb_core/datapath_units/Branch_Predictor.v \
+    rtl_rv32im_ahb_core/datapath_units/Extend_Unit.v \
+    rtl_rv32im_ahb_core/datapath_units/Imm_Adder.v \
+    rtl_rv32im_ahb_core/datapath_units/PC_Unit.v \
+    rtl_rv32im_ahb_core/datapath_units/Register_File.v \
+    rtl_rv32im_ahb_core/datapath_units/WB_Unit.v \
+    rtl_rv32im_ahb_core/csr/CSR_Data_Mux_Unit.v \
+    rtl_rv32im_ahb_core/csr/CSR_File.v \
+    rtl_rv32im_ahb_core/csr/Data_Wr_Mux_Unit.v \
+    rtl_rv32im_ahb_core/csr/Machine_Counter_Setup.v \
+    rtl_rv32im_ahb_core/csr/Machine_Counter.v \
+    rtl_rv32im_ahb_core/csr/MCause_Reg.v \
+    rtl_rv32im_ahb_core/csr/MEPC_MScratch_Reg.v \
+    rtl_rv32im_ahb_core/csr/MIE_Reg.v \
+    rtl_rv32im_ahb_core/csr/MIP_Reg.v \
+    rtl_rv32im_ahb_core/csr/MISA_PreData_Unit.v \
+    rtl_rv32im_ahb_core/csr/MStatus_Reg.v \
+    rtl_rv32im_ahb_core/csr/MTVal_Reg.v \
+    rtl_rv32im_ahb_core/csr/MTVec_Reg.v \
+    rtl_rv32im_ahb_core/memory_if/Load_Unit.v \
+    rtl_rv32im_ahb_core/memory_if/Store_Unit.v \
+    rtl_rv32im_ahb_core/multiply/Div32_NonRestoring.v \
+    rtl_rv32im_ahb_core/multiply/MDU.v \
+    rtl_rv32im_ahb_core/multiply/Mul32_Booth.v \
+    rtl_rv32im_ahb_core/hazards/Hazard_Unit.v
+
+# ============================================================================
+# Hierarchy
+# ============================================================================
+
+hierarchy -check -top Pip_RV32IM_AHB
+
+# ============================================================================
+# Generic RTL Synthesis
+# ============================================================================
+
+proc
+opt
+
+fsm
+opt
+
+memory
+opt
+
+flatten
+opt
+
+share
+opt
+
+# ============================================================================
+# Technology Mapping Preparation
+# ============================================================================
+
+techmap
+opt
+
+# Split buses/nets for better optimization
+splitnets -ports
+
+# Insert buffers on high-fanout nets
+insbuf
+
+opt
+
+# ============================================================================
+# Flip-Flop Mapping
+# ============================================================================
+
+dfflibmap -liberty \
+    syn_sta_rv32im_ahb_core/lib/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib
+
+# ============================================================================
+# Remove Undefined/X States
+# ============================================================================
+
+setundef -zero
+
+opt_clean -purge
+
+# ============================================================================
+# ABC Generic CMOS Mapping
+# ============================================================================
+
+abc -g cmos2
+
+# ============================================================================
+# Convert Generic Gates
+# ============================================================================
+
+simplemap
+
+techmap
+opt
+
+# ============================================================================
+# Cleanup
+# ============================================================================
+
+clean
+opt_clean -purge
+
+# ============================================================================
+# Final Validation
+# ============================================================================
+
+check
+
+# ============================================================================
+# Reports
+# ============================================================================
+
+stat
+
+tee -o \
+    syn_sta_rv32im_ahb_core/reports/synthesis/asap7_synthesis_stats.txt \
+    stat
+
+# ============================================================================
+# Netlist Outputs
+# ============================================================================
+
+write_verilog \
+    -simple-lhs \
+    -noexpr \
+    -noattr \
+    syn_sta_rv32im_ahb_core/netlist/synthesized/asap7_synthesized_netlist.v
+
+write_blif \
+    syn_sta_rv32im_ahb_core/netlist/synthesized/asap7_synthesized_netlist.blif
+
+write_json \
+    syn_sta_rv32im_ahb_core/netlist/synthesized/asap7_synthesized_netlist.json

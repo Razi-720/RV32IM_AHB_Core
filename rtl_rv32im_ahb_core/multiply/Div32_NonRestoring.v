@@ -2,26 +2,7 @@
 //!
 //! Architecture: Non-restoring division, 1 bit per cycle
 //! Target      : Sky130 standard cells, area-optimised embedded core
-//! Latency     : Up to 32 cycles + 1 correction cycle = 33 cycles worst case
-//!               Early termination fires when remaining dividend is zero
-//!               (common for small dividends — typical embedded workloads
-//!                finish in 8–16 cycles on average)
-//!
-//! Special cases (RISC-V spec §7.1):
-//!   Division by zero : DIV/REM  → −1 / dividend
-//!                      DIVU/REMU→ 2^32−1 / dividend
-//!   Signed overflow  : DIV(INT_MIN, −1) → INT_MIN, REM → 0
-//!
-//! Interface (multi-cycle, handshake):
-//!   Start_In  — pulse high for 1 cycle to begin a new division
-//!   Op_In     — funct3[2:1]: 10=DIV 11=DIVU 00=REM 01=REMU
-//!   Ready_Out — asserted when Result_Out is valid
-
-//! RV32M — Radix-2 Non-Restoring Iterative Divider
-//!
-//! Architecture: Non-restoring division, 1 bit per cycle
-//! Target      : Sky130 standard cells, area-optimised embedded core
-//! Latency     : Up to 32 cycles + 1 correction cycle = 33 cycles worst case
+//! Latency     : Up to 32 cycles + 2 correction cycles = 34 cycles worst case
 //!               Early termination fires when remaining dividend is zero
 //!               (common for small dividends — typical embedded workloads
 //!                finish in 8–16 cycles on average)
@@ -82,9 +63,12 @@ module Div32_NonRestoring (
   reg [32:0] Remainder_r;
   reg [5:0]  Count_r;
   reg        Running_r;
+  reg        Finalize_r;
   reg        Q_neg_r;
   reg        R_neg_r;
   reg        Is_Div_r;
+  reg [31:0] Q_final_r;
+  reg [31:0] R_final_r;
 
   // ============================================================
   // Restoring division next-state logic
@@ -93,12 +77,12 @@ module Div32_NonRestoring (
   wire [32:0] R_shift = {Remainder_r[31:0], Quotient_r[31]};
   wire [31:0] Q_shift = {Quotient_r[30:0], 1'b0};
   wire [32:0] Div_ext = {1'b0, Divisor_r};
-  wire        Take_Sub = (R_shift >= Div_ext);
-  wire [32:0] R_next   = Take_Sub ? (R_shift - Div_ext) : R_shift;
+  // Reuse one subtraction result for both decision and update to reduce
+  // comparator+subtractor duplication on the critical divide datapath.
+  wire [32:0] R_diff   = R_shift - Div_ext;
+  wire        Take_Sub = ~R_diff[32];
+  wire [32:0] R_next   = Take_Sub ? R_diff : R_shift;
   wire [31:0] Q_next   = Take_Sub ? (Q_shift | 32'h1) : Q_shift;
-
-  wire [31:0] Q_signed = Q_neg_r ? (~Q_next + 1'b1) : Q_next;
-  wire [31:0] R_signed = R_neg_r ? (~R_next[31:0] + 1'b1) : R_next[31:0];
 
   // ============================================================
   // Sequential logic
@@ -106,6 +90,7 @@ module Div32_NonRestoring (
   always @(posedge Clk_In) begin
     if (Rst_In) begin
       Running_r  <= 1'b0;
+      Finalize_r <= 1'b0;
       Ready_Out  <= 1'b1;
       Result_Out <= 32'h0;
       Count_r    <= 6'd0;
@@ -115,17 +100,22 @@ module Div32_NonRestoring (
       Q_neg_r    <= 1'b0;
       R_neg_r    <= 1'b0;
       Is_Div_r   <= 1'b0;
+      Q_final_r  <= 32'h0;
+      R_final_r  <= 32'h0;
     end
     else if (Start_In) begin
       Ready_Out <= 1'b0;
+      Finalize_r <= 1'b0;
 
       if (Div_By_Zero) begin
         Running_r  <= 1'b0;
+        Finalize_r <= 1'b0;
         Ready_Out  <= 1'b1;
         Result_Out <= Is_Div ? 32'hFFFF_FFFF : A_In;
       end
       else if (Signed_Ovf) begin
         Running_r  <= 1'b0;
+        Finalize_r <= 1'b0;
         Ready_Out  <= 1'b1;
         Result_Out <= Is_Div ? INT32_MIN : 32'h0;
       end
@@ -147,9 +137,18 @@ module Div32_NonRestoring (
 
       if (Count_r == 6'd31) begin
         Running_r  <= 1'b0;
-        Ready_Out  <= 1'b1;
-        Result_Out <= Is_Div_r ? Q_signed : R_signed;
+        Finalize_r <= 1'b1;
+        Ready_Out  <= 1'b0;
+        Q_final_r  <= Q_next;
+        R_final_r  <= R_next[31:0];
       end
+    end
+    else if (Finalize_r) begin
+      Finalize_r <= 1'b0;
+      Ready_Out  <= 1'b1;
+      Result_Out <= Is_Div_r
+                    ? (Q_neg_r ? (~Q_final_r + 1'b1) : Q_final_r)
+                    : (R_neg_r ? (~R_final_r + 1'b1) : R_final_r);
     end
   end
 

@@ -1,10 +1,10 @@
 //! RV32M Multiply-Divide Unit — Top Level
 //!
-//! Wraps Mul32_Booth (single-cycle) and Div32_NonRestoring (32-cycle iterative)
+//! Wraps Mul32_Booth (single-cycle datapath) and Div32_NonRestoring (32-cycle iterative)
 //! into one module with a clean interface to the 5-stage pipeline.
 //!
 //! ── Latency summary ─────────────────────────────────────────────────────────
-//!   MUL / MULH / MULHSU / MULHU : 1 cycle  (MDU_Ready_Out asserts next cycle)
+//!   MUL / MULH / MULHSU / MULHU : 2 cycles total (start + 1-cycle wait)
 //!   DIV / DIVU / REM / REMU     : 2–33 cycles (MDU_Ready_Out when done)
 //!                                  early-termination fires when remainder = 0
 //!
@@ -32,6 +32,8 @@ module MDU (
   wire Is_Div =  MDU_Op_In[2];
 
   wire [31:0] Mul_Result;
+  reg  [31:0] Mul_Result_r;
+  reg         Mul_Ready_r;
   Mul32_Booth u_mul (
     .A_In      (A_In),
     .B_In      (B_In),
@@ -64,7 +66,25 @@ module MDU (
       Div_Ready_Delayed_r <= Div_Ready;
   end
 
-  assign MDU_Ready_Out = Is_Mul ? 1'b1 : (Div_Ready_Delayed_r & ~(Start_In & Is_Div));
-  assign Result_Out    = Is_Mul ? Mul_Result : Div_Result;
+  // Register multiply result and hold ready low for one cycle after Start.
+  // This removes direct long combinational MUL feedback into the pipeline.
+  always @(posedge Clk_In) begin
+    if (Rst_In) begin
+      Mul_Result_r <= 32'h0;
+      Mul_Ready_r  <= 1'b1;
+    end
+    else if (Start_In & Is_Mul) begin
+      Mul_Result_r <= Mul_Result;
+      Mul_Ready_r  <= 1'b0;
+    end
+    else if (!Mul_Ready_r)
+      Mul_Ready_r <= 1'b1;
+  end
+
+  // Deassert ready in the same cycle as Start_In so EX does not advance
+  // before the registered MUL result is available.
+  assign MDU_Ready_Out = Is_Mul ? (Mul_Ready_r & ~(Start_In & Is_Mul))
+                                : (Div_Ready_Delayed_r & ~(Start_In & Is_Div));
+  assign Result_Out    = Is_Mul ? Mul_Result_r : Div_Result;
 
 endmodule

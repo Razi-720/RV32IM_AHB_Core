@@ -1,0 +1,78 @@
+###############################################################################
+# Yosys Synthesis Script for RV32IM AHB Core
+# Run from project root: /foss/designs/CPU/RV32IM_AHB_Core
+###############################################################################
+
+echo on
+
+# Liberty
+read_liberty -lib /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+
+# Read synthesizable RTL (exclude tb_*.v)
+read_verilog -sv -Iinclude \
+	rtl_rv32im_ahb_core/top/Pip_RV32IM_AHB.v \
+	rtl_rv32im_ahb_core/pipeline_registers/Reg_F_D.v \
+	rtl_rv32im_ahb_core/pipeline_registers/Reg_D_E.v \
+	rtl_rv32im_ahb_core/pipeline_registers/Reg_E_M.v \
+	rtl_rv32im_ahb_core/pipeline_registers/Reg_M_W.v \
+	rtl_rv32im_ahb_core/control/Decoder.v \
+	rtl_rv32im_ahb_core/control/Instr_Decoder.v \
+	rtl_rv32im_ahb_core/control/Machine_Control.v \
+	rtl_rv32im_ahb_core/control/WrEn_Generator.v \
+	rtl_rv32im_ahb_core/datapath_units/ALU.v \
+	rtl_rv32im_ahb_core/datapath_units/Branch_Predictor.v \
+	rtl_rv32im_ahb_core/datapath_units/Extend_Unit.v \
+	rtl_rv32im_ahb_core/datapath_units/Imm_Adder.v \
+	rtl_rv32im_ahb_core/datapath_units/PC_Unit.v \
+	rtl_rv32im_ahb_core/datapath_units/Register_File.v \
+	rtl_rv32im_ahb_core/datapath_units/WB_Unit.v \
+	rtl_rv32im_ahb_core/csr/CSR_Data_Mux_Unit.v \
+	rtl_rv32im_ahb_core/csr/CSR_File.v \
+	rtl_rv32im_ahb_core/csr/Data_Wr_Mux_Unit.v \
+	rtl_rv32im_ahb_core/csr/Machine_Counter_Setup.v \
+	rtl_rv32im_ahb_core/csr/Machine_Counter.v \
+	rtl_rv32im_ahb_core/csr/MCause_Reg.v \
+	rtl_rv32im_ahb_core/csr/MEPC_MScratch_Reg.v \
+	rtl_rv32im_ahb_core/csr/MIE_Reg.v \
+	rtl_rv32im_ahb_core/csr/MIP_Reg.v \
+	rtl_rv32im_ahb_core/csr/MISA_PreData_Unit.v \
+	rtl_rv32im_ahb_core/csr/MStatus_Reg.v \
+	rtl_rv32im_ahb_core/csr/MTVal_Reg.v \
+	rtl_rv32im_ahb_core/csr/MTVec_Reg.v \
+	rtl_rv32im_ahb_core/memory_if/Load_Unit.v \
+	rtl_rv32im_ahb_core/memory_if/Store_Unit.v \
+	rtl_rv32im_ahb_core/multiply/Div32_NonRestoring.v \
+	rtl_rv32im_ahb_core/multiply/MDU.v \
+	rtl_rv32im_ahb_core/multiply/Mul32_Booth.v \
+	rtl_rv32im_ahb_core/hazards/Hazard_Unit.v
+
+# Hierarchy + generic synthesis
+hierarchy -check -top Pip_RV32IM_AHB
+proc
+flatten
+opt -fast
+fsm
+opt -fast
+memory
+opt -fast
+share
+opt
+techmap
+opt -fast
+
+# Library mapping
+dfflibmap -liberty /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+abc -dff -liberty /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib -constr syn_sta_rv32im_ahb_core/constraints/synthesis_constraints.sdc
+clean
+opt_clean -purge
+
+# Reports
+stat -liberty /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+tee -o syn_sta_rv32im_ahb_core/reports/synthesis/synthesis_stats.txt stat -liberty /foss/pdks/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+check
+
+# Netlist outputs
+# write_verilog -noattr -norename syn_sta_rv32im_ahb_core/netlist/synthesized/synthesized_netlist.v
+write_verilog -noattr -nohex syn_sta_rv32im_ahb_core/netlist/synthesized/synthesized_netlist.v
+write_blif syn_sta_rv32im_ahb_core/netlist/synthesized/synthesized_netlist.blif
+write_json syn_sta_rv32im_ahb_core/netlist/synthesized/synthesized_netlist.json
